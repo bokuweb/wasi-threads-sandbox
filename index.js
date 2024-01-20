@@ -11,22 +11,18 @@ const { join } = require("node:path");
 
 const wasi = new WASI({ version: "preview1", args: argv, env });
 
+const file = readFile(join(__dirname, "wasi-threads.wasm"));
+
 if (isMainThread) {
   (async () => {
-    const wasm = await WebAssembly.compile(
-      await readFile(join(__dirname, "wasi-threads.wasm"))
-    );
-    let memory = new WebAssembly.Memory({
-      initial: 17,
-      maximum: 17,
-      shared: true,
-    });
-
-    const worker = new Worker(__filename, { workerData: { memory } });
+    const wasm = await WebAssembly.compile(await file);
+    const opts = { initial: 17, maximum: 17, shared: true };
+    const memory = new WebAssembly.Memory(opts);
     const instance = await WebAssembly.instantiate(wasm, {
       ...wasi.getImportObject(),
       wasi: {
         "thread-spawn": (arg) => {
+          const worker = new Worker(__filename, { workerData: { memory } });
           worker.postMessage(arg);
         },
       },
@@ -35,20 +31,21 @@ if (isMainThread) {
     wasi.start(instance);
   })();
 } else {
-  parentPort.on("message", async (arg) => {
-    const wasm = await WebAssembly.compile(
-      await readFile(join(__dirname, "wasi-threads.wasm"))
-    );
+  parentPort.on("message", async (start_arg) => {
+    const wasm = await WebAssembly.compile(await file);
+    const { memory } = workerData;
     const instance = await WebAssembly.instantiate(wasm, {
       ...wasi.getImportObject(),
       wasi: {
         "thread-spawn": (arg) => {
-          // dummy
+          const worker = new Worker(__filename, { workerData: { memory } });
+          worker.postMessage(arg);
         },
       },
-      env: { memory: workerData.memory },
+      env: { memory },
     });
-    instance.exports.wasi_thread_start(1, arg);
+    // thread id and start_arg
+    instance.exports.wasi_thread_start(1, start_arg);
     process.exit(0);
   });
 }
