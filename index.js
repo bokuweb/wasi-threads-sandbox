@@ -49,7 +49,7 @@ if (isMainThread) {
       env: { memory: workerData.memory },
     });
     instance.exports.wasi_thread_start(1, arg);
-    process.exit(1);
+    process.exit(0);
   });
 }
 
