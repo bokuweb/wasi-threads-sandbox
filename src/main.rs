@@ -1,11 +1,13 @@
-use std::thread;
+use rayon::prelude::*;
+
+fn sum_of_squares(input: &[i32]) -> i32 {
+    input
+        .par_iter() // <-- just change that!
+        .map(|&i| i * i)
+        .sum()
+}
 
 fn main() {
-    let mut x = 10;
-    thread::scope(|s| {
-        s.spawn(|| {
-            x += 20;
-        });
-    });
+    let x = sum_of_squares(&[10, 20, 30, 40]);
     println!("{x}");
 }
