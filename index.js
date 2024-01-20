@@ -1,4 +1,9 @@
-const { Worker, isMainThread, workerData } = require("node:worker_threads");
+const {
+  Worker,
+  isMainThread,
+  workerData,
+  parentPort,
+} = require("node:worker_threads");
 const { readFile } = require("node:fs/promises");
 const { WASI } = require("wasi");
 const { argv, env } = require("node:process");
@@ -17,14 +22,12 @@ if (isMainThread) {
       shared: true,
     });
 
-    // it is used to pass start_args.
-    const shared = new SharedArrayBuffer(4);
-    new Worker(__filename, { workerData: { shared, memory } });
+    const worker = new Worker(__filename, { workerData: { memory } });
     const instance = await WebAssembly.instantiate(wasm, {
       ...wasi.getImportObject(),
       wasi: {
         "thread-spawn": (arg) => {
-          new Uint32Array(shared)[0] = arg;
+          worker.postMessage(arg);
         },
       },
       env: { memory },
@@ -32,13 +35,7 @@ if (isMainThread) {
     wasi.start(instance);
   })();
 } else {
-  while (true) {
-    if (new Uint32Array(workerData.shared)[0] !== 0) {
-      break;
-    }
-  }
-
-  (async () => {
+  parentPort.on("message", async (arg) => {
     const wasm = await WebAssembly.compile(
       await readFile(join(__dirname, "wasi-threads.wasm"))
     );
@@ -51,11 +48,9 @@ if (isMainThread) {
       },
       env: { memory: workerData.memory },
     });
-    instance.exports.wasi_thread_start(
-      1,
-      new Uint32Array(workerData.shared)[0]
-    );
-  })();
+    instance.exports.wasi_thread_start(1, arg);
+    process.exit(1);
+  });
 }
 
 //
